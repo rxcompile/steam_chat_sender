@@ -1,108 +1,110 @@
-const SteamUser = require('steam-user')
-const SteamCommunity = require('steamcommunity');
-const readline = require('readline');
-const fs = require('fs');
-const SteamID = require('steamid');
-
+// For reference. Actual credentials is should be in creds.json
+/* creds.json
+{
+    "accountName": "<myacc>",
+    "password": "<mypass>"
+}
+*/
 const oauthFile = "./oauth.json";
 const credsFile = "./creds.json";
+const groupName = "rxdesugrp";
+const messageToSend = "Hi!";
 
+const readline = require('readline-promise').default;
+const SteamUser = require('steam-user')
+const SteamCommunity = require('steamcommunity');
+const fs = require('fs');
+const util = require('util')
 
 const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout
 });
+const community = new SteamCommunity();
+const user = new SteamUser();
 
-let community = new SteamCommunity();
-let user = new SteamUser();
+const regularLoginPromise = util.promisify((info, cb) => community.login(info, (err, ...results) => cb(err, results)));
+const oAuthLoginPromise = util.promisify(SteamCommunity.prototype.oAuthLogin).bind(community);
+const getClientLogonTokenPromise = util.promisify(SteamCommunity.prototype.getClientLogonToken).bind(community);
+const getSteamGroupPromise = util.promisify(SteamCommunity.prototype.getSteamGroup).bind(community);
+const getGroupMembersPromise = util.promisify(SteamCommunity.prototype.getGroupMembers).bind(community);
+const readFile = util.promisify(fs.readFile);
 
-// For reference. Actual credentials is should be in creds.json
-/*
-{
-    "username": "<myacc>",
-    "password": "<mypass>"
-}
-*/
-let file;
-try {
-    file = fs.readFileSync(credsFile);
-} catch (error) {
-    process.exit();
-}
-const loginDetail = JSON.parse(file);
-
-const authUser = () => {
-    community.getClientLogonToken((err, details) => {
-        if (err) {
-            console.log(err);
-            process.exit();
-        } else {
-            user.logOn(details);
-        }
-    });
+const connectSteam = (connectionDetails) => {
+    console.log("Logging in to SteamAPI...");
+    user.logOn(connectionDetails);
+    return Promise.resolve();
 };
+const sendMessages = (members, message) => Promise.all(
+    members.map(steamID =>
+        user.chat
+            .sendFriendMessage(steamID, message)
+            .catch(e => { console.log(e); })
+    )
+);
 
-const regularLogin = (info) => {
-    const loginHandler = (err, sessionID, cookies, steamguard, oAuthToken) => {
-        if (err) {
-            if (err.message == "SteamGuard") {
-                rl.question('What is SteamGuard value?\n', (answer) => {
-                    const loginViaGuard = {
-                        accountName: info.accountName,
-                        password: info.password,
-                        authCode: answer
-                    };
-                    regularLogin(loginViaGuard);
-                });
-            } else {
-                console.log("Error: ${err}. Exiting...");
-                process.exit();
-            }
-        } else {
-            console.log("Hello Web");
-            authUser();
-            fs.writeFile(oauthFile, JSON.stringify({ "steamguard": steamguard, "oAuthToken": oAuthToken }));
-        }
-    };
-    community.login(info, loginHandler);
-};
-
-const oauthLogin = (oauthData) => {
-    community.oAuthLogin(oauthData.steamguard, oauthData.oAuthToken, (err, ssid, cookies) => {
-        if (err) {
-            console.log("Error: ${err}. oAuth failed. Connect as usual.");
-            fs.unlink(oauthFile);
-            regularLogin(loginDetail);
-        } else {
-            console.log("oAuthLogin");
-            authUser();
-        }
-    });
-};
-
-fs.readFile(oauthFile, (err, data) => {
-    if (err) {
-        regularLogin(loginDetail);
-    } else {
-        oauthLogin(JSON.parse(data))
-    }
-});
-
-user.on('loggedOn', (details) => {
-    console.log("API Logged");
-    console.log(details);
+// subscribe to loggedOn to do payload script
+user.on('loggedOn', () => {
+    console.log("Logged in to SteamAPI.");
     user.setPersona(SteamUser.EPersonaState.Online);
+    console.log(`Start send message \"${messageToSend}\".`);
+    getSteamGroupPromise(groupName)
+        .then(grp => getGroupMembersPromise(grp.steamID))
+        .then(members => sendMessages(members, messageToSend))
+        .then(_ => console.log("Messages sent"), err => console.log(err))
+        .then(_ => process.exit());
 });
 
-user.on('friendsList', () => {
-    for (const id in user.myFriends) {
-        community.getSteamUser(new SteamID(id), (err, u) => {
-            if (!err) {
-                if (u.name == "RxCompiLe") {
-                    user.chat.sendFriendMessage(u.steamID, "Hi");
-                }
-            }
-        });
-    }
-    console.log(user.myFriends);
+const removeBadOauth = () => {
+    fs.unlink(oauthFile, _ => { });
+    return Promise.resolve();
+};
+
+const writeGoodOauth = (steamguard, oAuthToken) => new Promise((resolve, fail) => {
+    const data = JSON.stringify({
+        "steamguard": steamguard,
+        "oAuthToken": oAuthToken
+    });
+    fs.writeFile(oauthFile, data, e => {
+        if (e) {
+            fail(e);
+        } else {
+            console.log('Saved oAuth for later use.');
+            resolve();
+        }
+    });
 });
+
+const handleSteamGuard = (accountName, password) => rl.questionAsync('What is SteamGuard value?\n')
+    .then(guard => regularLoginPromise({
+        accountName: accountName,
+        password: password,
+        authCode: guard
+    }))
+    .then(([sessionID, cookies, steamguard, oAuthToken]) => writeGoodOauth(steamguard, oAuthToken));
+
+const handleLoginError = (err, credentials) => err.message == "SteamGuard"
+    ? handleSteamGuard(credentials.accountName, credentials.password)
+    : Promise.reject(err)
+
+const getCredentials = () => readFile(credsFile)
+    .then(data => Promise.resolve(JSON.parse(data)));
+
+const connectWithCredentials = (creds) => {
+    console.log('oAuth failed. Connect as usual.');
+    return removeBadOauth().then(_ => regularLoginPromise(creds).catch(err => handleLoginError(err, creds)));
+};
+
+// establish connection
+console.log('Logging in to SteamCommunity');
+readFile(oauthFile)
+    .then(data => Promise.resolve(JSON.parse(data)))
+    .then(oauth => oAuthLoginPromise(oauth.steamguard, oauth.oAuthToken))
+    .catch(_ => getCredentials().then(credentials => connectWithCredentials(credentials)))
+    .then(_ => console.log('Logged in to SteamCommunity.'))
+    .then(_ => getClientLogonTokenPromise())
+    .then(details => connectSteam(details))
+    .catch(err => {
+        console.log(err);
+        process.exit();
+    });
