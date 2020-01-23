@@ -34,13 +34,20 @@ const connectSteam = (connectionDetails) => {
     user.logOn(connectionDetails);
     return Promise.resolve();
 };
+
 const sendMessages = (members, message) =>
-    Promise.all(members.map(steamID =>
-        user.chat
-            .sendFriendMessage(steamID, message)
-            .then(_ => Promise.resolve({ steamID: steamID, result: 'Sent' }),
-                e => Promise.resolve({ steamID: steamID, result: e }))
-    )).then(array => array.forEach(o => console.log(`SteamId[${o.steamID}]: ${o.result}`)));
+    new Promise(async resolve => {
+        const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+        var results = [];
+        for (steamID of members) {
+            const result = await user.chat.sendFriendMessage(steamID, message).then(
+                _ => Promise.resolve({ steamID: steamID, result: 'Sent' }),
+                e => Promise.resolve({ steamID: steamID, result: e }));
+            results.push(result);
+            await sleep(1000);
+        }
+        resolve(results);
+    }).then(array => array.forEach(o => console.log(`SteamId[${o.steamID}]: ${o.result}`)));
 
 // subscribe to loggedOn to do payload script
 user.on('loggedOn', () => {

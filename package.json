@@ -1,12 +1,12 @@
 {
-  "name": "steam-bot",
+  "name": "steam_chat_sender",
   "version": "1.0.0",
-  "description": "",
+  "description": "Send messages to all users in group",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "author": "rxdesu",
+  "author": "rxcompile",
   "license": "MIT",
   "dependencies": {
     "minimist": "^1.2.0",
