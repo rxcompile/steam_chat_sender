@@ -1,5 +1,5 @@
 {
-  "name": "steam_chat_sender",
+  "name": "@rxcompile/steam_chat_sender",
   "version": "1.0.0",
   "description": "Send messages to all users in group",
   "main": "index.js",
@@ -14,5 +14,7 @@
     "steam-user": "^4.12.5",
     "steamcommunity": "^3.41.3"
   },
-  "publishConfig": { "registry": "https://npm.pkg.github.com/" }
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com/"
+  }
 }
