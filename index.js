@@ -44,7 +44,7 @@ const sendMessages = (members, message) =>
                 _ => Promise.resolve({ steamID: steamID, result: 'Sent' }),
                 e => Promise.resolve({ steamID: steamID, result: e }));
             results.push(result);
-            await sleep(1000);
+            await sleep(argv.timeout || 1000);
         }
         resolve(results);
     }).then(array => array.forEach(o => console.log(`SteamId[${o.steamID}]: ${o.result}`)));
