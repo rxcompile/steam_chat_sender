@@ -56,11 +56,20 @@ user.on('loggedOn', () => {
     console.log("Logged in to SteamAPI.");
     user.setPersona(SteamUser.EPersonaState.Online);
     console.log(`Start send message \"${messageToSend}\".`);
-    getSteamGroupPromise(groupName)
-        .then(grp => getGroupMembersPromise(grp.steamID))
-        .then(members => sendMessages(members, messageToSend))
-        .then(_ => console.log("Messages sent"), err => console.log(err))
-        .then(_ => process.exit());
+    if ('group' in argv) {
+        getSteamGroupPromise(groupName)
+            .then(grp => getGroupMembersPromise(grp.steamID))
+            .then(members => sendMessages(members, messageToSend))
+            .then(_ => console.log("Messages sent"), err => console.log(err))
+            .then(_ => process.exit());
+    } else if ('list' in argv) {
+        readFile(argv.list)
+            .then(list => Promise.resolve(JSON.parse(list)))
+            .then(users => Promise.resolve(users.map(i=> i.steamId)))
+            .then(members => sendMessages(members, messageToSend))
+            .then(_ => console.log("Messages sent"), err => console.log(err))
+            .then(_ => process.exit());
+    }
 });
 
 const removeBadOauth = () => {
